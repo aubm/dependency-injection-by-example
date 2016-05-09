@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/facebookgo/inject"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -18,10 +20,10 @@ type Post struct {
 type PostsHandlers struct {
 	Manager interface {
 		FindPosts() ([]Post, error)
-	}
+	} `inject:""`
 	Encoder interface {
 		ToJSON(w http.ResponseWriter, src interface{})
-	}
+	} `inject:""`
 }
 
 func (ph *PostsHandlers) GetPosts(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +36,7 @@ func (ph *PostsHandlers) GetPosts(w http.ResponseWriter, r *http.Request) {
 }
 
 type PostsManager struct {
-	DB *sql.DB
+	DB *sql.DB `inject:""`
 }
 
 func (pm *PostsManager) FindPosts() ([]Post, error) {
@@ -74,9 +76,14 @@ func main() {
 	}
 	defer db.Close()
 
-	postsManager := &PostsManager{DB: db}
-	encoder := &DefaultEncoder{}
-	postsHandlers := &PostsHandlers{Manager: postsManager, Encoder: encoder}
+	var postsManager PostsManager
+	var encoder DefaultEncoder
+	var postsHandlers PostsHandlers
+
+	if err := inject.Populate(db, &postsHandlers, &encoder, &postsManager); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	http.HandleFunc("/posts", postsHandlers.GetPosts)
 
